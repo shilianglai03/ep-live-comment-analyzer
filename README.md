@@ -32,6 +32,7 @@ EP/
 ├── index.html
 ├── package.json
 ├── package-lock.json
+├── requirements.txt
 ├── vite.config.js
 ├── server.py
 ├── styles.css
@@ -70,13 +71,7 @@ EP/
 - npm
 - Python 3.10 或更高版本
 
-如果你使用 Conda，可以直接使用本地已验证过的环境：
-
-```powershell
-conda activate ai_clone
-```
-
-后端只使用 Python 标准库，不需要额外安装 Python 依赖。
+Python 后端依赖见 `requirements.txt`。当前版本只使用 Python 标准库，没有额外第三方 Python 包。
 
 ## 快速开始
 
@@ -95,6 +90,14 @@ npm install --cache .\.npm-cache
 ```
 
 ### 2. 启动后端服务
+
+可选：安装 Python 依赖。当前文件中没有第三方依赖，执行该命令不会安装额外包，但可以作为统一初始化步骤保留。
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+启动本地 API 服务：
 
 ```powershell
 python server.py
