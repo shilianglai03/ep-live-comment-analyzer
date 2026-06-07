@@ -108,6 +108,16 @@ class EPHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self) -> None:
+        if self.path == "/api/health":
+            self._send_json(
+                {
+                    "ok": True,
+                    "service": "ep-live-comment-analyzer",
+                    "staticRoot": "dist" if (DIST_ROOT / "index.html").exists() else "source",
+                    "aiConfigured": bool(API_KEY),
+                }
+            )
+            return
         if self.path == "/api/status":
             self._send_json(
                 {
