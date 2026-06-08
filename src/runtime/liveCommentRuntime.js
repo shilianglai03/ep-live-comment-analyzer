@@ -5,6 +5,7 @@ import {
   getProductRelevanceKeywords as getCatalogProductRelevanceKeywords,
   inferProductKeyFromText as inferCatalogProductKeyFromText,
 } from "./filterStrategy.js";
+import { scoreReplyPriority } from "./commentPriority.js";
 
 export function createLiveCommentRuntime() {
 
@@ -55,6 +56,16 @@ const INTENT_META = {
   interaction: { label: "普通互动", className: "interaction", weight: 2 },
 };
 
+const DECISION_TYPE_META = {
+  price: { label: "价格决策", className: "price" },
+  afterSale: { label: "售后决策", className: "service" },
+  fulfillment: { label: "履约决策", className: "logistics" },
+  fit: { label: "尺码决策", className: "size" },
+  purchase: { label: "购买决策", className: "buy" },
+  risk: { label: "风险决策", className: "negative" },
+  interaction: { label: "普通互动", className: "interaction" },
+};
+
 const KEYWORD_RULES = [
   {
     intent: "negative",
@@ -64,32 +75,32 @@ const KEYWORD_RULES = [
   {
     intent: "buy",
     sentiment: "positive",
-    keywords: ["怎么买", "链接", "小黄车", "下单", "拍哪个", "想买", "加购", "已拍", "付款", "成交", "买一件"],
+    keywords: ["怎么买", "链接", "第几个链接", "哪个链接", "小黄车", "小黄车哪一个", "下单", "拍哪个", "想买", "加购", "已拍", "付款", "成交", "买一件", "买两件", "再来一件", "现在拍"],
   },
   {
     intent: "price",
     sentiment: "neutral",
-    keywords: ["多少钱", "价格", "优惠", "券", "便宜", "满减", "包邮", "最低", "活动", "到手"],
+    keywords: ["多少钱", "多钱", "多少米", "几米", "啥价", "什么价", "什么价格", "价格", "价钱", "到手价", "活动价", "券后", "券后价", "优惠", "还有优惠", "券", "领券", "便宜", "便宜点", "便宜些", "少点", "少一点", "能少", "能便宜", "满减", "划算", "最低", "活动", "到手"],
   },
   {
     intent: "size",
     sentiment: "neutral",
-    keywords: ["尺码", "码数", "大码", "小码", "身高", "体重", "多大", "多高", "多重", "合适", "XL", "xxl"],
+    keywords: ["尺码", "码数", "换码", "拍错码", "大码", "小码", "身高", "体重", "多大", "多高", "多重", "合适", "试穿", "XL", "xxl"],
   },
   {
     intent: "stock",
     sentiment: "neutral",
-    keywords: ["还有", "库存", "现货", "补货", "缺货", "颜色", "白色", "黑色", "粉色", "蓝色", "几号", "售罄"],
+    keywords: ["还有", "有货", "库存", "现货", "补货", "缺货", "颜色", "白色", "黑色", "粉色", "蓝色", "几号", "售罄"],
   },
   {
     intent: "logistics",
     sentiment: "neutral",
-    keywords: ["发货", "多久", "快递", "到货", "运费", "偏远", "新疆", "西藏", "包邮吗"],
+    keywords: ["发货", "什么时候发", "今天发", "今天能发", "能发吗", "多久", "几天到", "快递", "顺丰", "到货", "运费", "偏远", "新疆", "西藏", "包邮", "包邮吗", "包不包邮"],
   },
   {
     intent: "service",
     sentiment: "neutral",
-    keywords: ["质量", "售后", "退换", "正品", "材质", "面料", "起球", "缩水", "保温", "漏水", "磨脚"],
+    keywords: ["质量", "售后", "客服", "退换", "退货", "换货", "可以退", "可以换", "能退", "能换", "能退不", "能换不", "不合适", "拍错", "拍错了", "咋办", "咋弄", "怎么弄", "价保", "保修", "正品", "材质", "面料", "起球", "缩水", "保温", "漏水", "磨脚"],
   },
 ];
 
@@ -296,6 +307,8 @@ function sharedBindings() {
     exportArchivedCsv,
     exportReviewMarkdown,
     formatTime,
+    confidenceClass,
+    decisionMetaFor,
     getReplySourceClass,
     getReplySourceLabel,
     handleProductChange,
@@ -594,8 +607,13 @@ function createNoiseAnalysis(relevance) {
     intent: "interaction",
     sentiment: "neutral",
     priority: 0,
+    replyScore: 0,
+    decisionType: "interaction",
+    confidence: 0,
+    matchedSignals: [],
     keywords: relevance.matchedKeywords || [],
     needsReply: false,
+    urgencyLabel: "观察即可",
     reason: `已隔离：${relevance.reason}`,
   };
 }
@@ -621,27 +639,44 @@ function analyzeComment(comment) {
       intent: "interaction",
       sentiment: "neutral",
       priority: 1,
+      replyScore: 1,
+      decisionType: "interaction",
+      confidence: 20,
+      matchedSignals: [],
       keywords: extractKeywords(comment.text),
       needsReply: false,
+      urgencyLabel: "观察即可",
       reason: "普通互动评论",
     };
   }
 
   matches.sort((a, b) => b.score - a.score);
   const best = matches[0];
-  const allKeywords = [...new Set(matches.flatMap((item) => item.hitWords).concat(extractKeywords(comment.text)))];
-  const riskBoost = best.intent === "negative" ? 3 : 0;
-  const buyBoost = best.intent === "buy" ? 2 : 0;
+  const matchedKeywords = [...new Set(matches.flatMap((item) => item.hitWords))];
+  const allKeywords = [...new Set(matchedKeywords.concat(extractKeywords(comment.text)))];
   const repeatedBoost = getRepeatedBoost(allKeywords);
-  const priority = Math.min(10, Math.round(best.score / 2) + riskBoost + buyBoost + repeatedBoost);
+  const replyDecision = scoreReplyPriority({
+    text: comment.text,
+    intent: best.intent,
+    sentiment: best.sentiment,
+    hitWords: matchedKeywords,
+    relevanceScore: comment.relevance?.score || 0,
+    repeatedBoost,
+    matchedIntentCount: matches.length,
+  });
 
   return {
     intent: best.intent,
     sentiment: best.sentiment,
-    priority,
+    priority: replyDecision.priority,
+    replyScore: replyDecision.score,
+    decisionType: replyDecision.decisionType,
+    confidence: replyDecision.confidence,
+    matchedSignals: replyDecision.matchedSignals,
     keywords: allKeywords.slice(0, 8),
-    needsReply: priority >= 4 || ["negative", "buy", "price", "size", "stock"].includes(best.intent),
-    reason: makeReason(best.intent, priority, repeatedBoost),
+    needsReply: replyDecision.needsReply,
+    urgencyLabel: replyDecision.urgencyLabel,
+    reason: makeReason(best.intent, replyDecision.priority, replyDecision),
   };
 }
 
@@ -654,6 +689,11 @@ function buildReply(comment, analysis) {
     user: comment.user,
     intent: analysis.intent,
     priority: analysis.priority,
+    replyScore: analysis.replyScore ?? analysis.priority,
+    decisionType: analysis.decisionType || "interaction",
+    confidence: Number(analysis.confidence) || 0,
+    matchedSignals: Array.isArray(analysis.matchedSignals) ? analysis.matchedSignals : [],
+    urgencyLabel: analysis.urgencyLabel || urgencyLabelForPriority(analysis.priority),
     reason: analysis.reason,
     replySuggestion,
     templateSuggestion: replySuggestion,
@@ -734,6 +774,11 @@ async function requestAiReply(reply, comment, analysis) {
         intent: analysis.intent,
         intentLabel: INTENT_META[analysis.intent].label,
         priority: analysis.priority,
+        replyScore: analysis.replyScore,
+        decisionType: analysis.decisionType,
+        confidence: analysis.confidence,
+        matchedSignals: analysis.matchedSignals,
+        urgencyLabel: analysis.urgencyLabel,
         keywords: analysis.keywords,
         product: currentProduct.value,
         recentComments: state.comments.slice(0, 8).map((item) => item.text),
@@ -784,6 +829,9 @@ async function requestReplyRevision(reply) {
         revisionInstruction: instruction,
         intent: reply.intent,
         intentLabel: metaFor(reply.intent).label,
+        decisionType: reply.decisionType,
+        confidence: reply.confidence,
+        matchedSignals: reply.matchedSignals,
         product: currentProduct.value,
         revisionHistory: reply.revisionHistory.slice(-5),
       }),
@@ -910,7 +958,11 @@ function syncSelectedReplyIds() {
 }
 
 function rankReplies(replies) {
-  return [...replies].sort((a, b) => b.priority - a.priority || b.timestamp - a.timestamp);
+  return [...replies].sort((a, b) =>
+    b.priority - a.priority ||
+    (Number(b.replyScore) || 0) - (Number(a.replyScore) || 0) ||
+    b.timestamp - a.timestamp,
+  );
 }
 
 function updateAlerts(comment, analysis) {
@@ -1140,10 +1192,16 @@ function extractKeywords(text) {
     .slice(0, 6);
 }
 
-function makeReason(intent, priority, repeatedBoost) {
+function makeReason(intent, priority, replyDecision = {}) {
+  const tags = Array.isArray(replyDecision.reasonTags) ? replyDecision.reasonTags.slice(0, 4) : [];
+  const confidenceText = Number.isFinite(Number(replyDecision.confidence)) ? `，置信度 ${replyDecision.confidence}%` : "";
+  const priorityText = priority >= 8 ? "高优先级" : priority >= 6 ? "中高优先级" : "普通优先级";
+  if (intent === "price" && tags.includes("仅价格感叹")) {
+    return `${priorityText}，价格感叹不构成明确咨询，观察即可${confidenceText}；依据：${tags.join("、")}`;
+  }
   const base = {
     buy: "购买动作明确，适合立即引导下单",
-    price: "价格问题会影响转化，需要清晰回应",
+    price: "价格和到手价是成交决策点，需要优先回应",
     size: "尺码咨询会影响决策，建议快速给判断",
     stock: "库存颜色问题容易造成流失，需要及时回应",
     logistics: "发货问题影响下单信心",
@@ -1151,8 +1209,7 @@ function makeReason(intent, priority, repeatedBoost) {
     negative: "负面质疑需要优先接住情绪",
     interaction: "普通互动，可按节奏选择性回应",
   }[intent] || "需要回应";
-  const priorityText = priority >= 8 ? "高优先级" : priority >= 6 ? "中高优先级" : "普通优先级";
-  return repeatedBoost ? `${priorityText}，${base}，且近期重复出现` : `${priorityText}，${base}`;
+  return tags.length > 0 ? `${priorityText}，${base}${confidenceText}；依据：${tags.join("、")}` : `${priorityText}，${base}${confidenceText}`;
 }
 
 function createReplySuggestion(intent, product, text) {
@@ -1319,23 +1376,40 @@ function reviveRelevance(relevance) {
 
 function reviveAnalysis(analysis) {
   const intent = analysis?.intent && INTENT_META[analysis.intent] ? analysis.intent : "interaction";
+  const priority = Math.max(1, Math.min(10, Number(analysis?.priority) || 1));
+  const decisionType = analysis?.decisionType && DECISION_TYPE_META[analysis.decisionType] ? analysis.decisionType : inferDecisionTypeFromIntent(intent);
+  const confidence = Math.max(0, Math.min(100, Number(analysis?.confidence) || confidenceForPriority(priority)));
   return {
     intent,
     sentiment: String(analysis?.sentiment || "neutral"),
-    priority: Math.max(1, Math.min(10, Number(analysis?.priority) || 1)),
+    priority,
+    replyScore: Math.max(priority, Number(analysis?.replyScore) || priority),
+    decisionType,
+    confidence,
+    matchedSignals: Array.isArray(analysis?.matchedSignals) ? analysis.matchedSignals.map(String).slice(0, 6) : [],
     keywords: Array.isArray(analysis?.keywords) ? analysis.keywords.map(String).slice(0, 8) : [],
     needsReply: Boolean(analysis?.needsReply),
+    urgencyLabel: String(analysis?.urgencyLabel || urgencyLabelForPriority(priority)),
     reason: String(analysis?.reason || "历史记录恢复"),
   };
 }
 
 function reviveReply(reply) {
+  const priority = Math.max(1, Math.min(10, Number(reply.priority) || 1));
+  const intent = reply.intent && INTENT_META[reply.intent] ? reply.intent : "interaction";
+  const decisionType = reply.decisionType && DECISION_TYPE_META[reply.decisionType] ? reply.decisionType : inferDecisionTypeFromIntent(intent);
+  const confidence = Math.max(0, Math.min(100, Number(reply.confidence) || confidenceForPriority(priority)));
   return {
     id: reply.id,
     question: String(reply.question || ""),
     user: String(reply.user || "观众"),
-    intent: reply.intent && INTENT_META[reply.intent] ? reply.intent : "interaction",
-    priority: Math.max(1, Math.min(10, Number(reply.priority) || 1)),
+    intent,
+    priority,
+    replyScore: Math.max(priority, Number(reply.replyScore) || priority),
+    decisionType,
+    confidence,
+    matchedSignals: Array.isArray(reply.matchedSignals) ? reply.matchedSignals.map(String).slice(0, 6) : [],
+    urgencyLabel: String(reply.urgencyLabel || urgencyLabelForPriority(priority)),
     reason: String(reply.reason || "历史记录恢复"),
     replySuggestion: String(reply.replySuggestion || ""),
     templateSuggestion: String(reply.templateSuggestion || reply.replySuggestion || ""),
@@ -1410,6 +1484,10 @@ function metaFor(intent) {
   return INTENT_META[intent] || INTENT_META.interaction;
 }
 
+function decisionMetaFor(decisionType) {
+  return DECISION_TYPE_META[decisionType] || DECISION_TYPE_META.interaction;
+}
+
 function productNameForComment(comment) {
   if (comment.productKey && PRODUCTS[comment.productKey]) return PRODUCTS[comment.productKey].name;
   if (comment.relevance?.productKey && PRODUCTS[comment.relevance.productKey]) return PRODUCTS[comment.relevance.productKey].name;
@@ -1420,6 +1498,35 @@ function priorityClass(priority) {
   if (priority >= 8) return "danger";
   if (priority >= 6) return "warn";
   return "";
+}
+
+function confidenceClass(confidence) {
+  if (confidence >= 85) return "danger";
+  if (confidence >= 65) return "warn";
+  return "";
+}
+
+function urgencyLabelForPriority(priority) {
+  if (priority >= 8) return "及时回复";
+  if (priority >= 6) return "建议回复";
+  return "观察即可";
+}
+
+function confidenceForPriority(priority) {
+  if (priority >= 8) return 85;
+  if (priority >= 6) return 70;
+  if (priority >= 1) return 35;
+  return 0;
+}
+
+function inferDecisionTypeFromIntent(intent) {
+  if (intent === "price") return "price";
+  if (intent === "service") return "afterSale";
+  if (["stock", "logistics"].includes(intent)) return "fulfillment";
+  if (intent === "size") return "fit";
+  if (intent === "buy") return "purchase";
+  if (intent === "negative") return "risk";
+  return "interaction";
 }
 
 function revisionButtonText(reply) {

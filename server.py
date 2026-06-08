@@ -202,6 +202,7 @@ class EPHandler(SimpleHTTPRequestHandler):
 def request_ai_reply(payload: dict[str, Any]) -> str:
     comment = require_text(payload, "comment", max_len=500)
     intent = require_text(payload, "intentLabel", max_len=60)
+    decision_context = compact_decision_context(payload)
     product = payload.get("product") or {}
     product_name = str(product.get("name") or "当前商品")[:80]
     product_facts = compact_product_facts(product)
@@ -220,6 +221,7 @@ def request_ai_reply(payload: dict[str, Any]) -> str:
 {product_facts}
 
 评论意图：{intent}
+评论判定：{decision_context}
 观众评论：{comment}
 
 近期评论摘要：
@@ -240,6 +242,7 @@ def revise_ai_reply(payload: dict[str, Any]) -> str:
     current_reply = require_text(payload, "currentReply", max_len=500)
     instruction = require_text(payload, "revisionInstruction", max_len=300)
     intent = str(payload.get("intentLabel") or "待回复评论")[:60]
+    decision_context = compact_decision_context(payload)
     product = payload.get("product") or {}
     product_name = str(product.get("name") or "当前商品")[:80]
     product_facts = compact_product_facts(product)
@@ -260,6 +263,7 @@ def revise_ai_reply(payload: dict[str, Any]) -> str:
 {product_facts}
 
 评论意图：{intent}
+评论判定：{decision_context}
 观众原始问题：{comment}
 当前回复：{current_reply}
 历史版本：
@@ -331,6 +335,31 @@ def compact_product_facts(product: dict[str, Any]) -> str:
         if value:
             lines.append(f"- {label}：{value[:160]}")
     return "\n".join(lines) or "- 暂无商品信息"
+
+
+def compact_decision_context(payload: dict[str, Any]) -> str:
+    decision_labels = {
+        "price": "价格决策",
+        "afterSale": "售后决策",
+        "fulfillment": "履约决策",
+        "fit": "尺码决策",
+        "purchase": "购买决策",
+        "risk": "风险决策",
+        "interaction": "普通互动",
+    }
+    decision_type = str(payload.get("decisionType") or "interaction")[:40]
+    decision_label = decision_labels.get(decision_type, decision_type or "普通互动")
+    confidence = payload.get("confidence")
+    try:
+        confidence_text = f"{max(0, min(100, int(float(confidence))))}%"
+    except (TypeError, ValueError):
+        confidence_text = "未知"
+    matched_signals = payload.get("matchedSignals") or []
+    signals = []
+    if isinstance(matched_signals, list):
+        signals = [str(item)[:80] for item in matched_signals[:5] if str(item).strip()]
+    signal_text = "；".join(signals) if signals else "暂无"
+    return f"{decision_label}，置信度 {confidence_text}，信号：{signal_text}"
 
 
 def extract_reply_text(data: dict[str, Any]) -> str:

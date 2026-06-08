@@ -30,14 +30,19 @@
         <p class="comment-text">{{ comment.text }}</p>
         <div class="intent-row">
           <span class="intent-pill" :class="metaFor(comment.analysis.intent).className">{{ metaFor(comment.analysis.intent).label }}</span>
+          <span class="intent-pill" :class="decisionMetaFor(comment.analysis.decisionType).className">{{ decisionMetaFor(comment.analysis.decisionType).label }}</span>
           <span class="intent-pill" :class="priorityClass(comment.analysis.priority)">优先级 {{ comment.analysis.priority }}</span>
+          <span class="intent-pill" :class="confidenceClass(comment.analysis.confidence)">置信 {{ comment.analysis.confidence || 0 }}%</span>
+          <span v-if="comment.analysis.needsReply" class="intent-pill timely">{{ comment.analysis.urgencyLabel || "及时回复" }}</span>
           <span class="intent-pill" :class="comment.relevance?.related ? 'related' : 'noise'">
             {{ comment.relevance?.related ? "纳入分析" : "已隔离" }}
           </span>
           <span class="intent-pill product-attribution">归属：{{ productNameForComment(comment) }}</span>
-          <span v-for="keyword in comment.analysis.keywords.slice(0, 3)" :key="keyword" class="intent-pill">{{ keyword }}</span>
+          <span v-for="signal in comment.analysis.matchedSignals?.slice(0, 2) || []" :key="signal" class="intent-pill signal">{{ signal }}</span>
+          <span v-for="keyword in comment.analysis.keywords.slice(0, comment.analysis.matchedSignals?.length ? 1 : 3)" :key="keyword" class="intent-pill">{{ keyword }}</span>
         </div>
         <p v-if="!comment.relevance?.related" class="comment-noise-reason">{{ comment.relevance?.reason }}</p>
+        <p v-else-if="comment.analysis.reason" class="comment-noise-reason">{{ comment.analysis.reason }}</p>
       </article>
     </div>
   </section>
@@ -60,6 +65,8 @@ const {
   relevantComments,
   noiseComments,
   formatTime,
+  confidenceClass,
+  decisionMetaFor,
   metaFor,
   priorityClass,
   productNameForComment,

@@ -19,6 +19,10 @@
           <span class="intent-row">
             <span class="source-pill" :class="getReplySourceClass(reply)">{{ getReplySourceLabel(reply) }}</span>
             <span class="intent-pill" :class="metaFor(reply.intent).className">{{ metaFor(reply.intent).label }}</span>
+            <span class="intent-pill" :class="decisionMetaFor(reply.decisionType).className">{{ decisionMetaFor(reply.decisionType).label }}</span>
+            <span class="intent-pill" :class="priorityClass(reply.priority)">优先级 {{ reply.priority }}</span>
+            <span class="intent-pill" :class="confidenceClass(reply.confidence)">置信 {{ reply.confidence || 0 }}%</span>
+            <span class="intent-pill timely">{{ reply.urgencyLabel || "及时回复" }}</span>
           </span>
         </div>
         <div v-if="!compact" class="reply-action-row">
@@ -31,6 +35,9 @@
         <div class="qa-block">
           <span class="qa-label">问题</span>
           <p class="reply-question">{{ reply.question }}</p>
+        </div>
+        <div v-if="reply.matchedSignals?.length && !compact" class="intent-row">
+          <span v-for="signal in reply.matchedSignals.slice(0, 4)" :key="signal" class="intent-pill signal">{{ signal }}</span>
         </div>
         <div class="qa-block">
           <span class="qa-label">当前回答</span>
@@ -81,12 +88,15 @@ const {
   replyHealth,
   selectedCount,
   archiveSelectedReplies,
+  confidenceClass,
+  decisionMetaFor,
   isReplySelected,
   toggleReplySelection,
   archiveReply,
   getReplySourceClass,
   getReplySourceLabel,
   metaFor,
+  priorityClass,
   requestReplyRevision,
   revisionButtonText,
 } = runtime.sharedBindings();

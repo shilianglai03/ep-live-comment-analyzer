@@ -8,6 +8,7 @@
     "backend": "python server.py",
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "vite build",
+    "check:priority": "node scripts/check-priority.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173"
   },
   "engines": {

@@ -510,6 +510,11 @@ h3 {
   color: var(--red);
 }
 
+.intent-pill.timely {
+  background: #ffe9ec;
+  color: var(--red);
+}
+
 .intent-pill.warn,
 .intent-pill.noise,
 .intent-pill.service,
@@ -537,6 +542,11 @@ h3 {
 .intent-pill.product-attribution {
   background: #edf7ff;
   color: var(--blue);
+}
+
+.intent-pill.signal {
+  background: #f5f0ff;
+  color: var(--violet);
 }
 
 .comment-feed,
