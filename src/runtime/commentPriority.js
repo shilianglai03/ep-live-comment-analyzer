@@ -233,6 +233,7 @@ function calculateConfidence({
   if (signals.risk) confidence += 8;
   if (matchedIntentCount >= 2) confidence += 5;
   if (hitWords.length >= 2) confidence += 5;
+  if (hitWords.length > 2) confidence += Math.min(10, (hitWords.length - 2) * 2);
   if (repeatedBoost > 0) confidence += 4;
   if (priority >= 8) confidence += 5;
   if (weakPriceOnly) confidence -= 30;

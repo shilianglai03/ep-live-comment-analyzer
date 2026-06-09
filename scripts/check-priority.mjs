@@ -1,4 +1,5 @@
 import { evaluateProductRelevance } from "../src/runtime/filterStrategy.js";
+import { matchCommentIntents } from "../src/runtime/commentIntent.js";
 import { scoreReplyPriority } from "../src/runtime/commentPriority.js";
 
 const PRODUCTS = {
@@ -12,8 +13,7 @@ const scenarios = [
     name: "短价格问句进入高优先级",
     text: "这个多少钱，领券后到手价是多少？",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["多少钱", "券", "到手价"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "price") &&
       priority.priority >= 8 &&
@@ -24,8 +24,7 @@ const scenarios = [
     name: "口语价格问句进入高优先级",
     text: "这个啥价，券后几米？",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["啥价", "券后", "几米"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "price") &&
       priority.priority >= 8 &&
@@ -35,8 +34,7 @@ const scenarios = [
     name: "能少点不属于价格决策",
     text: "现在拍能少点不",
     productKey: "suncoat",
-    intent: "price",
-    hitWords: ["现在拍", "少点"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "price") &&
       priority.priority >= 8 &&
@@ -46,8 +44,7 @@ const scenarios = [
     name: "当前商品价格问句强相关",
     text: "轻薄防晒衣 到手价多少？",
     productKey: "suncoat",
-    intent: "price",
-    hitWords: ["到手价"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       relevance.related &&
       relevance.score >= 85 &&
@@ -58,8 +55,7 @@ const scenarios = [
     name: "价格感叹不进入及时回复",
     text: "316 保温杯好便宜",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["便宜"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       relevance.related &&
       !priority.needsReply &&
@@ -71,8 +67,7 @@ const scenarios = [
     name: "价格不错不进入回复队列",
     text: "这个价格不错",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["价格"],
+    expectedIntent: "price",
     expect: ({ relevance, priority }) =>
       relevance.related &&
       !priority.needsReply &&
@@ -82,8 +77,7 @@ const scenarios = [
     name: "拍错码换货问题及时回复",
     text: "拍错码了可以换吗？",
     productKey: "suncoat",
-    intent: "service",
-    hitWords: ["拍错", "可以换"],
+    expectedIntent: "service",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "afterSale") &&
       priority.priority >= 8 &&
@@ -93,8 +87,7 @@ const scenarios = [
     name: "不合适咋弄属于售后决策",
     text: "不合适咋弄，能退不",
     productKey: "sneaker",
-    intent: "service",
-    hitWords: ["不合适", "能退"],
+    expectedIntent: "service",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "afterSale") &&
       priority.priority >= 8 &&
@@ -104,8 +97,7 @@ const scenarios = [
     name: "身高体重问题属于尺码决策",
     text: "身高168体重115穿哪个码？",
     productKey: "suncoat",
-    intent: "size",
-    hitWords: ["身高", "体重", "哪个"],
+    expectedIntent: "size",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "fit") &&
       priority.priority >= 8 &&
@@ -115,8 +107,7 @@ const scenarios = [
     name: "包邮和偏远地区属于履约决策",
     text: "能包邮吗，偏远地区怎么算？",
     productKey: "cup",
-    intent: "logistics",
-    hitWords: ["包邮吗", "偏远"],
+    expectedIntent: "logistics",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "fulfillment") &&
       priority.priority >= 8 &&
@@ -126,8 +117,7 @@ const scenarios = [
     name: "今天能发吗属于履约决策",
     text: "今天能发吗，几天到？",
     productKey: "cup",
-    intent: "logistics",
-    hitWords: ["今天能发", "几天到"],
+    expectedIntent: "logistics",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "fulfillment") &&
       priority.priority >= 8,
@@ -136,8 +126,7 @@ const scenarios = [
     name: "链接位置属于购买决策",
     text: "小黄车哪一个，第几个链接？",
     productKey: "suncoat",
-    intent: "buy",
-    hitWords: ["小黄车", "链接"],
+    expectedIntent: "buy",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "purchase") &&
       priority.priority >= 8 &&
@@ -147,8 +136,7 @@ const scenarios = [
     name: "负面质疑属于风险决策",
     text: "质量差不差，别翻车啊",
     productKey: "cup",
-    intent: "negative",
-    hitWords: ["质量差", "翻车"],
+    expectedIntent: "negative",
     expect: ({ relevance, priority }) =>
       isReplyDecision(relevance, priority, "risk") &&
       priority.priority >= 8 &&
@@ -158,32 +146,24 @@ const scenarios = [
     name: "普通称赞不进入回复队列",
     text: "主播衣服好看",
     productKey: "cup",
-    intent: "interaction",
-    hitWords: [],
     expect: ({ relevance, priority }) => !relevance.related && priority === null,
   },
   {
     name: "离题价格问句仍然隔离",
     text: "背景音乐多少钱能买到？",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["多少钱"],
     expect: ({ relevance, priority }) => !relevance.related && priority === null,
   },
   {
     name: "隔壁耳机优惠仍然隔离",
     text: "隔壁耳机还有优惠吗？",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["优惠"],
     expect: ({ relevance, priority }) => !relevance.related && priority === null,
   },
   {
     name: "当前讲杯子时小白鞋问题归属其他商品",
     text: "小白鞋多少钱？",
     productKey: "cup",
-    intent: "price",
-    hitWords: ["多少钱"],
     expect: ({ relevance, priority }) =>
       !relevance.related &&
       relevance.productKey === "sneaker" &&
@@ -200,14 +180,7 @@ for (const scenario of scenarios) {
     products: PRODUCTS,
   });
   const priority = relevance.related
-    ? scoreReplyPriority({
-        text: scenario.text,
-        intent: scenario.intent,
-        sentiment: scenario.intent === "negative" ? "negative" : "neutral",
-        hitWords: scenario.hitWords,
-        relevanceScore: relevance.score,
-        matchedIntentCount: scenario.hitWords.length > 1 ? 2 : 1,
-      })
+    ? scoreFromRuntimePath(scenario, relevance)
     : null;
 
   const passed = scenario.expect({ relevance, priority });
@@ -216,6 +189,7 @@ for (const scenario of scenarios) {
       name: scenario.name,
       text: scenario.text,
       relevance,
+      classification: relevance.related ? matchCommentIntents(scenario.text) : null,
       priority,
     });
   }
@@ -243,4 +217,27 @@ function isReplyDecision(relevance, priority, decisionType) {
 
 function hasSignal(priority, signalLabel) {
   return priority.matchedSignals.some((signal) => signal.startsWith(signalLabel));
+}
+
+function scoreFromRuntimePath(scenario, relevance) {
+  const classification = matchCommentIntents(scenario.text);
+  if (!classification.best) return null;
+  const priority = scoreReplyPriority({
+    text: scenario.text,
+    intent: classification.best.intent,
+    sentiment: classification.best.sentiment,
+    hitWords: classification.matchedKeywords,
+    relevanceScore: relevance.score,
+    matchedIntentCount: classification.matches.length,
+  });
+  priority.classifiedIntent = classification.best.intent;
+  priority.hitWords = classification.matchedKeywords;
+  if (scenario.expectedIntent && classification.best.intent !== scenario.expectedIntent) {
+    return {
+      ...priority,
+      needsReply: false,
+      classificationError: `expected ${scenario.expectedIntent}, got ${classification.best.intent}`,
+    };
+  }
+  return priority;
 }
