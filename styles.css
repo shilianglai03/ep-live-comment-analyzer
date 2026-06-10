@@ -549,9 +549,24 @@ h3 {
   color: var(--violet);
 }
 
+.intent-pill.playbook {
+  background: #eaf8f5;
+  color: #08756a;
+}
+
+.intent-pill.fact {
+  max-width: 100%;
+  background: #eef5f3;
+  color: var(--primary-dark);
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+}
+
 .comment-feed,
 .reply-list,
 .intent-bars,
+.decision-list,
 .alert-list,
 .archive-list {
   display: grid;
@@ -586,6 +601,52 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.decision-list {
+  align-content: start;
+}
+
+.response-load,
+.decision-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.response-load {
+  padding: 10px;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.response-load.warn {
+  border-color: #f3d49b;
+  background: #fff8e7;
+  color: var(--amber);
+}
+
+.response-load.danger {
+  border-color: #f2b6bd;
+  background: #fff0f0;
+  color: var(--red);
+}
+
+.decision-row {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.decision-row strong {
+  color: var(--text);
+  font-size: 14px;
 }
 
 .comment-item {
@@ -707,6 +768,29 @@ h3 {
 .reply-copy.ai {
   background: #edf7ff;
   color: #174ea6;
+}
+
+.response-plan {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #cfeae4;
+  border-radius: 8px;
+  background: #f5fbf9;
+}
+
+.response-plan strong {
+  display: block;
+  margin-top: 4px;
+  color: #08756a;
+  font-size: 14px;
+}
+
+.response-plan p {
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .source-pill {

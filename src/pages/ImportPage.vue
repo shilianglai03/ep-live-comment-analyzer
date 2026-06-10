@@ -9,7 +9,7 @@
         <span class="health-pill">{{ currentProduct.name }}</span>
       </div>
       <div class="import-help">
-        <p>支持一行一条评论，也支持 CSV / TSV。CSV 可包含 <strong>user</strong>、<strong>product</strong>、<strong>comment</strong> 列。</p>
+        <p>支持一行一条评论、CSV / TSV 或 JSON Lines。结构化数据可包含 <strong>user</strong>、<strong>product</strong>、<strong>comment</strong> / <strong>content</strong> 等列。</p>
       </div>
       <label class="field">
         <span>导入来源</span>
@@ -17,7 +17,7 @@
       </label>
       <label class="field import-text-field">
         <span>评论内容</span>
-        <textarea v-model="state.importText" class="import-textarea" placeholder="一行一条评论，或粘贴 CSV：user,product,comment"></textarea>
+        <textarea v-model="state.importText" class="import-textarea" placeholder="一行一条评论，或粘贴 CSV / TSV / JSON Lines"></textarea>
       </label>
       <div class="import-actions">
         <button class="ghost-button" type="button" @click="loadImportExample">载入示例</button>

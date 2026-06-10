@@ -7,6 +7,11 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        index: "index.html",
+      },
+    },
   },
   server: {
     host: "127.0.0.1",

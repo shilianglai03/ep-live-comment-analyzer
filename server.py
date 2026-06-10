@@ -359,7 +359,43 @@ def compact_decision_context(payload: dict[str, Any]) -> str:
     if isinstance(matched_signals, list):
         signals = [str(item)[:80] for item in matched_signals[:5] if str(item).strip()]
     signal_text = "；".join(signals) if signals else "暂无"
-    return f"{decision_label}，置信度 {confidence_text}，信号：{signal_text}"
+    playbook_text = compact_response_playbook(payload.get("responsePlan"))
+    return f"{decision_label}，置信度 {confidence_text}，信号：{signal_text}{playbook_text}"
+
+
+def compact_response_playbook(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    parts = []
+    action_label = str(value.get("actionLabel") or "").strip()
+    reply_goal = str(value.get("replyGoal") or "").strip()
+    host_hint = str(value.get("hostHint") or "").strip()
+    sla_seconds = value.get("slaSeconds")
+    required_facts = value.get("requiredFacts") or []
+    if action_label:
+        parts.append(f"回复动作：{action_label[:40]}")
+    if reply_goal:
+        parts.append(f"回复目标：{reply_goal[:40]}")
+    try:
+        seconds = int(float(sla_seconds))
+        if seconds > 0:
+            parts.append(f"建议时效：{seconds}秒内")
+    except (TypeError, ValueError):
+        pass
+    if host_hint:
+        parts.append(f"场控提示：{host_hint[:120]}")
+    if isinstance(required_facts, list):
+        facts = []
+        for item in required_facts[:4]:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or item.get("field") or "").strip()
+            fact_value = str(item.get("value") or "").strip()
+            if label and fact_value:
+                facts.append(f"{label}:{fact_value[:80]}")
+        if facts:
+            parts.append(f"必须参考事实：{'；'.join(facts)}")
+    return f"，{'，'.join(parts)}" if parts else ""
 
 
 def extract_reply_text(data: dict[str, Any]) -> str:

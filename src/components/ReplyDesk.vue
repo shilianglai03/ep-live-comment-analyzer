@@ -23,6 +23,7 @@
             <span class="intent-pill" :class="priorityClass(reply.priority)">优先级 {{ reply.priority }}</span>
             <span class="intent-pill" :class="confidenceClass(reply.confidence)">置信 {{ reply.confidence || 0 }}%</span>
             <span class="intent-pill timely">{{ reply.urgencyLabel || "及时回复" }}</span>
+            <span v-if="reply.responsePlan" class="intent-pill playbook">{{ reply.responsePlan.actionLabel }}</span>
           </span>
         </div>
         <div v-if="!compact" class="reply-action-row">
@@ -38,6 +39,16 @@
         </div>
         <div v-if="reply.matchedSignals?.length && !compact" class="intent-row">
           <span v-for="signal in reply.matchedSignals.slice(0, 4)" :key="signal" class="intent-pill signal">{{ signal }}</span>
+        </div>
+        <div v-if="reply.responsePlan && !compact" class="response-plan">
+          <div>
+            <span class="qa-label">场控动作</span>
+            <strong>{{ reply.responsePlan.actionLabel }} · {{ reply.responsePlan.replyGoal }} · {{ reply.responsePlan.slaSeconds }} 秒内</strong>
+          </div>
+          <p>{{ reply.responsePlan.hostHint }}</p>
+          <div v-if="reply.responsePlan.requiredFacts?.length" class="intent-row">
+            <span v-for="fact in reply.responsePlan.requiredFacts" :key="fact.field" class="intent-pill fact">{{ fact.label }}：{{ fact.value }}</span>
+          </div>
         </div>
         <div class="qa-block">
           <span class="qa-label">当前回答</span>

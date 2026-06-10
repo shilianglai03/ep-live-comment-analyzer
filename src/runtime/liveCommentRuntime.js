@@ -1,4 +1,7 @@
 import { computed, reactive, watch } from "vue";
+import { PRODUCTS } from "./productCatalog.js";
+import { parseImportedRows } from "./importParser.js";
+import { createPlaybookReplySuggestion, getResponsePlaybook } from "./replyPlaybook.js";
 import {
   evaluateProductRelevance as evaluateCatalogProductRelevance,
   findProductKeyByName as findCatalogProductKeyByName,
@@ -9,42 +12,6 @@ import { matchCommentIntents } from "./commentIntent.js";
 import { scoreReplyPriority } from "./commentPriority.js";
 
 export function createLiveCommentRuntime() {
-
-const PRODUCTS = {
-  suncoat: {
-    name: "轻薄防晒衣",
-    price: "到手 79 元",
-    coupon: "直播间领 20 元券",
-    specs: "S 到 2XL，按平时外套尺码选",
-    stock: "白色和浅灰现货充足，粉色库存偏少",
-    shipping: "今晚 23 点前下单，48 小时内发货，偏远地区顺延",
-    service: "支持 7 天无理由，吊牌完整不影响二次销售即可",
-    quality: "UPF50+，轻薄透气，日常通勤和户外都适合",
-    relevanceKeywords: ["轻薄防晒衣", "防晒衣", "防晒", "UPF", "外套", "面料", "透气", "遮阳", "户外", "尺码", "身高", "体重", "2XL", "XL", "大码", "小码", "穿"],
-  },
-  sneaker: {
-    name: "百搭小白鞋",
-    price: "到手 129 元",
-    coupon: "第二双减 30 元",
-    specs: "35 到 40 码，脚背高建议拍大一码",
-    stock: "36 到 39 码现货足，35 码少量",
-    shipping: "默认中通或圆通，拍下后 24 到 48 小时发货",
-    service: "尺码不合适可换，保持鞋底干净即可",
-    quality: "软底不磨脚，适合通勤、逛街和日常穿搭",
-    relevanceKeywords: ["百搭小白鞋", "小白鞋", "鞋", "鞋底", "磨脚", "脚背", "鞋码", "36码", "37码", "38码", "39码", "40码", "通勤鞋", "穿"],
-  },
-  cup: {
-    name: "316 保温杯",
-    price: "到手 59 元",
-    coupon: "拍两件自动再减 10 元",
-    specs: "480ml 和 650ml 两种容量，通勤建议 480ml",
-    stock: "奶白和雾蓝库存足，黑色快售罄",
-    shipping: "仓库按付款顺序发货，一般 48 小时内出库",
-    service: "杯盖密封问题可联系客服补发配件",
-    quality: "316 不锈钢内胆，热水和冰饮都可以用",
-    relevanceKeywords: ["316 保温杯", "保温杯", "杯", "杯盖", "漏水", "保温", "316", "容量", "480ml", "650ml", "毫升", "内胆", "热水", "冰饮", "密封"],
-  },
-};
 
 const INTENT_META = {
   buy: { label: "购买意向", className: "buy", weight: 10 },
@@ -236,6 +203,43 @@ const intentRows = computed(() => {
     };
   });
 });
+const decisionRows = computed(() => {
+  const buckets = {};
+  for (const reply of state.replies) {
+    const decisionType = DECISION_TYPE_META[reply.decisionType] ? reply.decisionType : "interaction";
+    if (!buckets[decisionType]) {
+      buckets[decisionType] = {
+        decisionType,
+        label: decisionMetaFor(decisionType).label,
+        className: decisionMetaFor(decisionType).className,
+        actionLabel: getResponsePlaybook(decisionType, currentProduct.value).actionLabel,
+        count: 0,
+        urgent: 0,
+        confidenceTotal: 0,
+      };
+    }
+    buckets[decisionType].count += 1;
+    buckets[decisionType].urgent += reply.priority >= 8 ? 1 : 0;
+    buckets[decisionType].confidenceTotal += Number(reply.confidence) || 0;
+  }
+
+  return Object.values(buckets)
+    .map((row) => ({
+      ...row,
+      avgConfidence: row.count > 0 ? Math.round(row.confidenceTotal / row.count) : 0,
+    }))
+    .sort((a, b) => b.urgent - a.urgent || b.count - a.count || b.avgConfidence - a.avgConfidence)
+    .slice(0, 6);
+});
+const responseLoad = computed(() => {
+  const urgent = state.replies.filter((reply) => reply.priority >= 8).length;
+  const suggested = state.replies.filter((reply) => reply.priority >= 6 && reply.priority < 8).length;
+  if (urgent >= 5) return { level: "danger", text: `${urgent} 条高优先级待处理，建议先暂停讲新品` };
+  if (urgent >= 3) return { level: "warn", text: `${urgent} 条高优先级集中出现，建议场控先清队列` };
+  if (suggested >= 5) return { level: "warn", text: `${suggested} 条建议回复评论，保持讲解节奏` };
+  if (state.replies.length > 0) return { level: "ok", text: "回复队列压力正常" };
+  return { level: "ok", text: "暂无待回复压力" };
+});
 const scriptPlan = computed(() => buildScriptPlan());
 const reviewReport = computed(() => buildReviewReport());
 
@@ -265,6 +269,8 @@ function sharedBindings() {
     aiStatusText,
     hotWords,
     intentRows,
+    decisionRows,
+    responseLoad,
     scriptPlan,
     reviewReport,
     archiveReply,
@@ -404,7 +410,7 @@ function loadImportExample() {
 }
 
 function importBatchComments() {
-  const rows = parseImportedRows(state.importText);
+  const rows = parseImportedRows(state.importText, { findProductKeyByName });
   if (rows.length === 0) {
     state.importSummary = "没有识别到可导入的评论。";
     return;
@@ -425,86 +431,6 @@ function importBatchComments() {
   if (state.comments.length === beforeTotal) {
     state.importSummary = "导入完成，但没有新增评论。";
   }
-}
-
-function parseImportedRows(rawText) {
-  const lines = String(rawText || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const delimiter = detectImportDelimiter(lines);
-  if (!delimiter) {
-    return lines.map((line) => ({ text: line })).filter((row) => row.text.length > 0);
-  }
-
-  const rows = lines.map((line) => parseDelimitedLine(line, delimiter));
-  const header = rows[0].map((cell) => normalizeHeader(cell));
-  const hasHeader = header.some((cell) => ["comment", "text", "content", "评论", "内容"].includes(cell));
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-  const indexes = hasHeader ? getImportHeaderIndexes(header) : { text: rows[0].length - 1, user: 0, product: 1 };
-
-  return dataRows
-    .map((cells) => {
-      const text = String(cells[indexes.text] || cells[cells.length - 1] || "").trim();
-      if (!text) return null;
-      const user = indexes.user >= 0 ? String(cells[indexes.user] || "").trim() : "";
-      const productName = indexes.product >= 0 ? String(cells[indexes.product] || "").trim() : "";
-      return {
-        text,
-        user,
-        productKey: findProductKeyByName(productName),
-      };
-    })
-    .filter(Boolean);
-}
-
-function detectImportDelimiter(lines) {
-  const sample = lines.slice(0, 3).join("\n");
-  if (sample.includes("\t")) return "\t";
-  if (sample.includes(",")) return ",";
-  return "";
-}
-
-function parseDelimitedLine(line, delimiter) {
-  if (delimiter === "\t") return line.split("\t").map((cell) => cell.trim());
-  const cells = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      cells.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function normalizeHeader(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function getImportHeaderIndexes(header) {
-  return {
-    text: findHeaderIndex(header, ["comment", "text", "content", "评论", "内容"]),
-    user: findHeaderIndex(header, ["user", "nickname", "name", "用户", "昵称"]),
-    product: findHeaderIndex(header, ["product", "item", "商品", "产品"]),
-  };
-}
-
-function findHeaderIndex(header, names) {
-  return header.findIndex((cell) => names.includes(cell));
 }
 
 function findProductKeyByName(value) {
@@ -579,6 +505,7 @@ function createNoiseAnalysis(relevance) {
     keywords: relevance.matchedKeywords || [],
     needsReply: false,
     urgencyLabel: "观察即可",
+    responsePlan: getResponsePlaybook("interaction", currentProduct.value),
     reason: `已隔离：${relevance.reason}`,
   };
 }
@@ -598,6 +525,7 @@ function analyzeComment(comment) {
       keywords: extractKeywords(comment.text),
       needsReply: false,
       urgencyLabel: "观察即可",
+      responsePlan: getResponsePlaybook("interaction", currentProduct.value),
       reason: "普通互动评论",
     };
   }
@@ -625,12 +553,14 @@ function analyzeComment(comment) {
     keywords: allKeywords.slice(0, 8),
     needsReply: replyDecision.needsReply,
     urgencyLabel: replyDecision.urgencyLabel,
+    responsePlan: getResponsePlaybook(replyDecision.decisionType, currentProduct.value),
     reason: makeReason(best.intent, replyDecision.priority, replyDecision),
   };
 }
 
 function buildReply(comment, analysis) {
-  const replySuggestion = createReplySuggestion(analysis.intent, currentProduct.value, comment.text);
+  const responsePlan = analysis.responsePlan || getResponsePlaybook(analysis.decisionType, currentProduct.value);
+  const replySuggestion = createReplySuggestion(analysis.intent, analysis.decisionType, currentProduct.value, comment.text);
 
   return {
     id: comment.id,
@@ -643,6 +573,7 @@ function buildReply(comment, analysis) {
     confidence: Number(analysis.confidence) || 0,
     matchedSignals: Array.isArray(analysis.matchedSignals) ? analysis.matchedSignals : [],
     urgencyLabel: analysis.urgencyLabel || urgencyLabelForPriority(analysis.priority),
+    responsePlan,
     reason: analysis.reason,
     replySuggestion,
     templateSuggestion: replySuggestion,
@@ -728,6 +659,7 @@ async function requestAiReply(reply, comment, analysis) {
         confidence: analysis.confidence,
         matchedSignals: analysis.matchedSignals,
         urgencyLabel: analysis.urgencyLabel,
+        responsePlan: analysis.responsePlan,
         keywords: analysis.keywords,
         product: currentProduct.value,
         recentComments: state.comments.slice(0, 8).map((item) => item.text),
@@ -781,6 +713,7 @@ async function requestReplyRevision(reply) {
         decisionType: reply.decisionType,
         confidence: reply.confidence,
         matchedSignals: reply.matchedSignals,
+        responsePlan: reply.responsePlan,
         product: currentProduct.value,
         revisionHistory: reply.revisionHistory.slice(-5),
       }),
@@ -918,6 +851,7 @@ function updateAlerts(comment, analysis) {
   const recent = state.comments.slice(0, 12);
   const negativeCount = recent.filter((item) => item.analysis?.intent === "negative").length;
   const topIntent = getTopIntent();
+  const decisionHotspot = getRecentDecisionHotspot(recent);
   const alerts = [];
 
   if (analysis.intent === "negative") {
@@ -938,8 +872,41 @@ function updateAlerts(comment, analysis) {
       text: `${metaFor(topIntent).label}正在集中出现，建议连续讲 20 秒核心信息。`,
     });
   }
+  if (decisionHotspot && decisionHotspot.count >= 3) {
+    alerts.push({
+      type: decisionHotspot.urgent >= 2 ? "danger" : "warn",
+      text: `${decisionHotspot.label}在最近评论里集中出现 ${decisionHotspot.count} 次，场控动作：${decisionHotspot.actionLabel}。`,
+    });
+  }
+  if (responseLoad.value.level !== "ok") {
+    alerts.push({
+      type: responseLoad.value.level,
+      text: responseLoad.value.text,
+    });
+  }
 
   state.alerts = dedupeAlerts([...alerts, ...state.alerts]).slice(0, 8);
+}
+
+function getRecentDecisionHotspot(comments) {
+  const buckets = {};
+  for (const item of comments) {
+    const analysis = item.analysis;
+    if (!analysis?.needsReply) continue;
+    const decisionType = DECISION_TYPE_META[analysis.decisionType] ? analysis.decisionType : "interaction";
+    if (!buckets[decisionType]) {
+      buckets[decisionType] = {
+        decisionType,
+        label: decisionMetaFor(decisionType).label,
+        actionLabel: getResponsePlaybook(decisionType, currentProduct.value).actionLabel,
+        count: 0,
+        urgent: 0,
+      };
+    }
+    buckets[decisionType].count += 1;
+    buckets[decisionType].urgent += analysis.priority >= 8 ? 1 : 0;
+  }
+  return Object.values(buckets).sort((a, b) => b.urgent - a.urgent || b.count - a.count)[0] || null;
 }
 
 function dedupeAlerts(alerts) {
@@ -1161,21 +1128,8 @@ function makeReason(intent, priority, replyDecision = {}) {
   return tags.length > 0 ? `${priorityText}，${base}${confidenceText}；依据：${tags.join("、")}` : `${priorityText}，${base}${confidenceText}`;
 }
 
-function createReplySuggestion(intent, product, text) {
-  const templates = {
-    buy: `可以直接拍小黄车里的「${product.name}」，当前${product.price}，先领券再下单更划算。`,
-    price: `这款${product.name}${product.price}，${product.coupon}，现在拍是本场比较合适的价格。`,
-    size: `${product.name}的尺码建议：${product.specs}。如果在两个尺码之间，建议按使用场景选更舒服的一码。`,
-    stock: `库存这边帮你看一下：${product.stock}。喜欢的颜色建议先拍，库存会按付款顺序锁定。`,
-    logistics: `发货说明：${product.shipping}。下单后可以在订单里看物流更新。`,
-    service: `售后可以放心，${product.service}。关于质量，${product.quality}。`,
-    negative: `这个问题要正面回应：${product.quality}，同时${product.service}。不建议回避，可以请对方说明具体担心点。`,
-    interaction: `可以感谢这位朋友，并顺手把${product.name}的核心卖点再重复一遍。`,
-  };
-  if (intent === "size" && /168|115|身高|体重/.test(text)) {
-    return `168、115斤可以先按平时外套尺码选，想宽松拍大一码；${product.shipping}。`;
-  }
-  return templates[intent] || templates.interaction;
+function createReplySuggestion(intent, decisionType, product, text) {
+  return createPlaybookReplySuggestion({ intent, decisionType, product, text });
 }
 
 function loadAiLimit() {
@@ -1339,6 +1293,7 @@ function reviveAnalysis(analysis) {
     keywords: Array.isArray(analysis?.keywords) ? analysis.keywords.map(String).slice(0, 8) : [],
     needsReply: Boolean(analysis?.needsReply),
     urgencyLabel: String(analysis?.urgencyLabel || urgencyLabelForPriority(priority)),
+    responsePlan: getResponsePlaybook(decisionType, currentProduct.value),
     reason: String(analysis?.reason || "历史记录恢复"),
   };
 }
@@ -1359,6 +1314,7 @@ function reviveReply(reply) {
     confidence,
     matchedSignals: Array.isArray(reply.matchedSignals) ? reply.matchedSignals.map(String).slice(0, 6) : [],
     urgencyLabel: String(reply.urgencyLabel || urgencyLabelForPriority(priority)),
+    responsePlan: getResponsePlaybook(decisionType, currentProduct.value),
     reason: String(reply.reason || "历史记录恢复"),
     replySuggestion: String(reply.replySuggestion || ""),
     templateSuggestion: String(reply.templateSuggestion || reply.replySuggestion || ""),

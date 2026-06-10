@@ -34,6 +34,7 @@
           <span class="intent-pill" :class="priorityClass(comment.analysis.priority)">优先级 {{ comment.analysis.priority }}</span>
           <span class="intent-pill" :class="confidenceClass(comment.analysis.confidence)">置信 {{ comment.analysis.confidence || 0 }}%</span>
           <span v-if="comment.analysis.needsReply" class="intent-pill timely">{{ comment.analysis.urgencyLabel || "及时回复" }}</span>
+          <span v-if="comment.analysis.responsePlan && comment.analysis.needsReply" class="intent-pill playbook">{{ comment.analysis.responsePlan.actionLabel }}</span>
           <span class="intent-pill" :class="comment.relevance?.related ? 'related' : 'noise'">
             {{ comment.relevance?.related ? "纳入分析" : "已隔离" }}
           </span>

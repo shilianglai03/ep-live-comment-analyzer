@@ -1,12 +1,7 @@
 import { evaluateProductRelevance } from "../src/runtime/filterStrategy.js";
 import { matchCommentIntents } from "../src/runtime/commentIntent.js";
 import { scoreReplyPriority } from "../src/runtime/commentPriority.js";
-
-const PRODUCTS = {
-  suncoat: { name: "轻薄防晒衣" },
-  sneaker: { name: "百搭小白鞋" },
-  cup: { name: "316 保温杯" },
-};
+import { PRODUCTS } from "../src/runtime/productCatalog.js";
 
 const scenarios = [
   {
