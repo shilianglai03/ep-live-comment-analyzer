@@ -33,6 +33,15 @@
           </div>
         </div>
       </div>
+      <div class="report-section">
+        <h3>回复结果</h3>
+        <div class="report-table">
+          <div class="report-row header"><span>结果</span><span>数量</span></div>
+          <div v-for="row in reviewReport.outcomeRows" :key="row.outcome" class="report-row">
+            <span>{{ row.label }}</span><strong>{{ row.value }}</strong>
+          </div>
+        </div>
+      </div>
     </section>
     <section class="panel report-panel">
       <div class="panel-heading">

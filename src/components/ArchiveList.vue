@@ -29,6 +29,7 @@
           <span class="intent-row">
             <span class="source-pill" :class="getReplySourceClass(reply)">{{ getReplySourceLabel(reply) }}</span>
             <span class="intent-pill" :class="metaFor(reply.intent).className">{{ metaFor(reply.intent).label }}</span>
+            <span class="intent-pill" :class="outcomeMetaFor(reply.outcome).className">{{ outcomeMetaFor(reply.outcome).label }}</span>
             <span v-if="reply.revisionHistory.length" class="archive-meta-pill">修改 {{ reply.revisionHistory.length }} 次</span>
           </span>
         </div>
@@ -52,5 +53,6 @@ const {
   getReplySourceClass,
   getReplySourceLabel,
   metaFor,
+  outcomeMetaFor,
 } = useLiveCommentRuntime().sharedBindings();
 </script>

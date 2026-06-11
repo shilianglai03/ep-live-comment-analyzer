@@ -1,3 +1,5 @@
+import { normalizeLiveEvent } from "./liveEventAdapter.js";
+
 const TEXT_HEADERS = ["comment", "text", "content", "message", "msg", "danmu", "弹幕", "评论", "评论内容", "内容", "消息"];
 const USER_HEADERS = ["user", "nickname", "name", "username", "displayname", "观众", "用户", "昵称", "粉丝"];
 const PRODUCT_HEADERS = ["product", "productname", "item", "itemname", "sku", "goods", "商品", "商品名称", "产品", "货品"];
@@ -65,16 +67,7 @@ function parseJsonLines(lines, findProductKeyByName) {
     .map((line) => {
       try {
         const item = JSON.parse(line);
-        if (!item || typeof item !== "object") return null;
-        const text = firstField(item, TEXT_HEADERS);
-        if (!text) return null;
-        const productName = firstField(item, PRODUCT_HEADERS);
-        return {
-          text,
-          user: firstField(item, USER_HEADERS),
-          source: firstField(item, SOURCE_HEADERS),
-          productKey: findProductKeyByName(productName),
-        };
+        return normalizeLiveEvent(item, { findProductKeyByName });
       } catch {
         return null;
       }
@@ -111,17 +104,6 @@ function getImportHeaderIndexes(header) {
 
 function findHeaderIndex(header, names) {
   return header.findIndex((cell) => names.includes(cell));
-}
-
-function firstField(item, names) {
-  const lowered = Object.fromEntries(Object.entries(item).map(([key, value]) => [normalizeHeader(key), value]));
-  for (const name of names) {
-    const value = lowered[normalizeHeader(name)];
-    if (value !== undefined && value !== null && String(value).trim()) {
-      return String(value).trim();
-    }
-  }
-  return "";
 }
 
 function normalizeHeader(value) {

@@ -31,6 +31,12 @@
             <input type="checkbox" :checked="isReplySelected(reply.id)" @change="toggleReplySelection(reply.id, $event.target.checked)" />
             <span>已回答</span>
           </label>
+          <label class="outcome-select">
+            <span>结果</span>
+            <select v-model="reply.outcome">
+              <option v-for="option in replyOutcomeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
           <button class="mini-archive-button" type="button" @click="archiveReply(reply.id)">归档</button>
         </div>
         <div class="qa-block">
@@ -110,6 +116,7 @@ const {
   priorityClass,
   requestReplyRevision,
   revisionButtonText,
+  replyOutcomeOptions,
 } = runtime.sharedBindings();
 
 const visibleReplies = computed(() => (props.compact ? state.replies.slice(0, 4) : state.replies));

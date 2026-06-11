@@ -1,4 +1,4 @@
-export const PRODUCTS = {
+export const DEFAULT_PRODUCTS = {
   suncoat: {
     name: "轻薄防晒衣",
     price: "到手 79 元",
@@ -34,6 +34,8 @@ export const PRODUCTS = {
   },
 };
 
+export const PRODUCTS = cloneProductMap(DEFAULT_PRODUCTS);
+
 export const PRODUCT_FILTER_PROFILES = {
   suncoat: {
     aliases: ["轻薄防晒衣", "防晒衣", "防晒", "UPF", "外套", "遮阳"],
@@ -58,4 +60,15 @@ export function getProductByKey(productKey) {
 
 export function getProductEntries() {
   return Object.entries(PRODUCTS);
+}
+
+export function cloneProduct(product) {
+  return {
+    ...product,
+    relevanceKeywords: Array.isArray(product?.relevanceKeywords) ? [...product.relevanceKeywords] : [],
+  };
+}
+
+export function cloneProductMap(products) {
+  return Object.fromEntries(Object.entries(products).map(([key, product]) => [key, cloneProduct(product)]));
 }

@@ -1,5 +1,5 @@
 import { computed, reactive, watch } from "vue";
-import { PRODUCTS } from "./productCatalog.js";
+import { DEFAULT_PRODUCTS, PRODUCTS, cloneProduct } from "./productCatalog.js";
 import { parseImportedRows } from "./importParser.js";
 import { createPlaybookReplySuggestion, getResponsePlaybook } from "./replyPlaybook.js";
 import {
@@ -35,6 +35,15 @@ const DECISION_TYPE_META = {
   risk: { label: "风险决策", className: "negative" },
   interaction: { label: "普通互动", className: "interaction" },
 };
+
+const DEFAULT_REPLY_OUTCOME = "answered";
+const REPLY_OUTCOME_META = {
+  answered: { label: "已口播", className: "related" },
+  converted: { label: "疑似转化", className: "buy" },
+  followUp: { label: "继续追问", className: "warn" },
+  unresolved: { label: "未解决", className: "danger" },
+};
+const REPLY_OUTCOME_OPTIONS = Object.entries(REPLY_OUTCOME_META).map(([value, meta]) => ({ value, label: meta.label }));
 
 const SAMPLE_COMMENTS = [
   "这个多少钱，领券后到手价是多少？",
@@ -96,6 +105,19 @@ const STOP_WORDS = new Set(["这个", "一个", "可以", "有没有", "是不�
 const DEFAULT_AI_LIMIT = 24;
 const AI_LIMIT_STORAGE_KEY = "ep.ai.maxRequestsPerSession";
 const WORKSPACE_STORAGE_KEY = "ep.workspace.v1";
+const PRODUCT_CONFIG_STORAGE_KEY = "ep.productConfig.v1";
+
+const PRODUCT_EDITOR_FIELDS = [
+  { key: "name", label: "商品名称", multiline: false },
+  { key: "price", label: "价格", multiline: false },
+  { key: "coupon", label: "优惠", multiline: false },
+  { key: "specs", label: "规格", multiline: true },
+  { key: "stock", label: "库存", multiline: true },
+  { key: "shipping", label: "发货", multiline: true },
+  { key: "service", label: "售后", multiline: true },
+  { key: "quality", label: "品质卖点", multiline: true },
+  { key: "relevanceKeywordsText", label: "相关关键词", multiline: true },
+];
 
 const NAV_ITEMS = [
   { to: "/overview", label: "总览", short: "总览" },
@@ -145,12 +167,23 @@ const state = reactive({
     pendingIds: new Set(),
     maxRequestsPerSession: DEFAULT_AI_LIMIT,
   },
+  productConfigVersion: 0,
+  productEditor: {
+    draft: {},
+    statusText: "未修改",
+  },
 });
 
 let stopWorkspacePersistence = null;
 
-const currentProduct = computed(() => PRODUCTS[state.productKey]);
-const productOptions = computed(() => Object.entries(PRODUCTS).map(([key, product]) => ({ key, product })));
+const currentProduct = computed(() => {
+  state.productConfigVersion;
+  return PRODUCTS[state.productKey];
+});
+const productOptions = computed(() => {
+  state.productConfigVersion;
+  return Object.entries(PRODUCTS).map(([key, product]) => ({ key, product }));
+});
 const relevantComments = computed(() => state.comments.filter((comment) => comment.relevance?.related));
 const noiseComments = computed(() => state.comments.filter((comment) => comment.relevance && !comment.relevance.related));
 const buySignals = computed(() => state.intentCounts.buy || 0);
@@ -252,9 +285,11 @@ function sharedBindings() {
     state,
     products: PRODUCTS,
     productOptions,
+    productEditorFields: PRODUCT_EDITOR_FIELDS,
     intentMeta: INTENT_META,
     navItems: NAV_ITEMS,
     commentViewOptions: COMMENT_VIEW_OPTIONS,
+    replyOutcomeOptions: REPLY_OUTCOME_OPTIONS,
     currentProduct,
     relevantComments,
     noiseComments,
@@ -287,10 +322,13 @@ function sharedBindings() {
     isReplySelected,
     loadImportExample,
     metaFor,
+    outcomeMetaFor,
     priorityClass,
     productNameForComment,
+    resetProductDraft,
     requestReplyRevision,
     revisionButtonText,
+    saveProductDraft,
     submitManualComment,
     toggleReplySelection,
   };
@@ -345,6 +383,7 @@ function updateSpeed(value) {
 }
 
 function handleProductChange() {
+  resetProductDraftStatus();
   rebuildAnalysisForCurrentProduct();
   saveWorkspaceState();
 }
@@ -435,6 +474,88 @@ function importBatchComments() {
 
 function findProductKeyByName(value) {
   return findCatalogProductKeyByName(value, PRODUCTS);
+}
+
+function resetProductDraftStatus(statusText = "未修改") {
+  state.productEditor.draft = createProductDraft(PRODUCTS[state.productKey]);
+  state.productEditor.statusText = statusText;
+}
+
+function saveProductDraft() {
+  const product = productFromDraft(state.productEditor.draft, PRODUCTS[state.productKey]);
+  PRODUCTS[state.productKey] = product;
+  state.productConfigVersion += 1;
+  saveProductConfig();
+  resetProductDraftStatus("已保存，相关评论已重新分析");
+  rebuildAnalysisForCurrentProduct();
+  saveWorkspaceState();
+}
+
+function resetProductDraft() {
+  const defaultProduct = DEFAULT_PRODUCTS[state.productKey];
+  if (!defaultProduct) return;
+  PRODUCTS[state.productKey] = cloneProduct(defaultProduct);
+  state.productConfigVersion += 1;
+  saveProductConfig();
+  resetProductDraftStatus("已恢复默认商品资料");
+  rebuildAnalysisForCurrentProduct();
+  saveWorkspaceState();
+}
+
+function createProductDraft(product) {
+  const value = cloneProduct(product || {});
+  return {
+    ...value,
+    relevanceKeywordsText: (value.relevanceKeywords || []).join("、"),
+  };
+}
+
+function productFromDraft(draft, fallback) {
+  const base = cloneProduct(fallback || {});
+  const product = { ...base };
+  for (const field of PRODUCT_EDITOR_FIELDS) {
+    if (field.key === "relevanceKeywordsText") continue;
+    product[field.key] = String(draft?.[field.key] || "").trim() || base[field.key] || "";
+  }
+  product.relevanceKeywords = parseKeywordList(draft?.relevanceKeywordsText || base.relevanceKeywords || []);
+  return product;
+}
+
+function parseKeywordList(value) {
+  if (Array.isArray(value)) return [...new Set(value.map(String).map((item) => item.trim()).filter(Boolean))];
+  return [...new Set(String(value || "")
+    .split(/[、,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+function loadProductConfig() {
+  let parsed = null;
+  try {
+    const raw = window.localStorage?.getItem(PRODUCT_CONFIG_STORAGE_KEY);
+    if (!raw) return;
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!parsed || parsed.version !== 1 || !parsed.products || typeof parsed.products !== "object") return;
+  for (const [key, value] of Object.entries(parsed.products)) {
+    if (!PRODUCTS[key] || !value || typeof value !== "object") continue;
+    PRODUCTS[key] = productFromDraft(createProductDraft(value), PRODUCTS[key]);
+  }
+  state.productConfigVersion += 1;
+}
+
+function saveProductConfig() {
+  try {
+    window.localStorage?.setItem(PRODUCT_CONFIG_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      products: Object.fromEntries(Object.entries(PRODUCTS).map(([key, product]) => [key, cloneProduct(product)])),
+    }));
+  } catch {
+    // Product editing is optional; storage failures should not break analysis.
+  }
 }
 
 function ingestRandomComment() {
@@ -584,6 +705,7 @@ function buildReply(comment, analysis) {
     revisionStatus: "idle",
     revisionError: "",
     revisionHistory: [],
+    outcome: DEFAULT_REPLY_OUTCOME,
     timestamp: comment.timestamp,
     answered: false,
     archivedAt: null,
@@ -794,11 +916,12 @@ function exportArchivedCsv() {
 }
 
 function buildArchiveCsv(rows) {
-  const header = ["归档时间", "用户", "意图", "问题", "回答", "来源", "修改次数"];
+  const header = ["归档时间", "用户", "意图", "结果", "问题", "回答", "来源", "修改次数"];
   const body = rows.map((reply) => [
     reply.archivedAt ? new Date(reply.archivedAt).toLocaleString("zh-CN", { hour12: false }) : "",
     reply.user,
     metaFor(reply.intent).label,
+    outcomeMetaFor(reply.outcome).label,
     reply.question,
     reply.replySuggestion,
     getReplySourceLabel(reply),
@@ -991,6 +1114,7 @@ function buildReviewReport() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
   const topHotWords = hotWords.value.slice(0, 8);
+  const outcomeRows = buildOutcomeRows();
   const noiseRatio = state.comments.length === 0 ? 0 : Math.round((noiseComments.value.length / state.comments.length) * 100);
 
   return {
@@ -1005,9 +1129,24 @@ function buildReviewReport() {
     riskCount: riskCount.value,
     topIntentRows,
     topHotWords,
+    outcomeRows,
     productRows,
-    suggestions: buildReviewSuggestions(topIntentRows, noiseRatio),
+    suggestions: buildReviewSuggestions(topIntentRows, noiseRatio, outcomeRows),
   };
+}
+
+function buildOutcomeRows() {
+  const counts = Object.fromEntries(Object.keys(REPLY_OUTCOME_META).map((key) => [key, 0]));
+  for (const reply of state.archivedReplies) {
+    const outcome = REPLY_OUTCOME_META[reply.outcome] ? reply.outcome : DEFAULT_REPLY_OUTCOME;
+    counts[outcome] += 1;
+  }
+  return Object.entries(REPLY_OUTCOME_META).map(([outcome, meta]) => ({
+    outcome,
+    label: meta.label,
+    className: meta.className,
+    value: counts[outcome] || 0,
+  }));
 }
 
 function getCommentProductKey(comment) {
@@ -1017,9 +1156,12 @@ function getCommentProductKey(comment) {
   return inferProductKeyFromText(comment.text || "");
 }
 
-function buildReviewSuggestions(topIntentRows, noiseRatio) {
+function buildReviewSuggestions(topIntentRows, noiseRatio, outcomeRows = []) {
   const suggestions = [];
   const topIntent = topIntentRows[0]?.intent;
+  const followUpCount = outcomeRows.find((row) => row.outcome === "followUp")?.value || 0;
+  const unresolvedCount = outcomeRows.find((row) => row.outcome === "unresolved")?.value || 0;
+  const convertedCount = outcomeRows.find((row) => row.outcome === "converted")?.value || 0;
   if (topIntent) {
     suggestions.push(`下一场优先补强“${metaFor(topIntent).label}”话术，因为它是当前最集中的有效问题。`);
   }
@@ -1031,6 +1173,12 @@ function buildReviewSuggestions(topIntentRows, noiseRatio) {
   }
   if (riskCount.value > 0) {
     suggestions.push(`风险质疑出现 ${riskCount.value} 条，复盘时要检查质量、售后和价格解释是否足够清晰。`);
+  }
+  if (followUpCount + unresolvedCount > 0) {
+    suggestions.push(`有 ${followUpCount + unresolvedCount} 条归档回复仍需追问或未解决，建议复盘对应话术是否事实不足或表达太长。`);
+  }
+  if (convertedCount > 0) {
+    suggestions.push(`已有 ${convertedCount} 条归档被标记为疑似转化，可以沉淀为下场优先话术。`);
   }
   if (suggestions.length === 0) {
     suggestions.push("当前评论结构比较健康，可以继续保持商品讲解、价格说明和互动节奏。");
@@ -1069,6 +1217,9 @@ function buildReviewMarkdown(report) {
     "",
     "## 高频热词",
     report.topHotWords.length ? report.topHotWords.map((item) => `- ${item.word}：${item.count}`).join("\n") : "- 暂无",
+    "",
+    "## 回复结果",
+    ...formatMarkdownRows(report.outcomeRows.map((row) => [row.label, row.value]), ["结果", "数量"]),
     "",
     "## 商品归属",
     ...formatMarkdownRows(report.productRows.map((row) => [row.name, row.total, row.currentEffective, row.replies]), ["商品", "归属评论", "当前有效", "待回复"]),
@@ -1325,6 +1476,7 @@ function reviveReply(reply) {
     revisionStatus: reply.revisionStatus === "loading" ? "idle" : String(reply.revisionStatus || "idle"),
     revisionError: "",
     revisionHistory: Array.isArray(reply.revisionHistory) ? reply.revisionHistory.map(reviveRevisionHistoryItem) : [],
+    outcome: reply.outcome && REPLY_OUTCOME_META[reply.outcome] ? reply.outcome : DEFAULT_REPLY_OUTCOME,
     timestamp: reviveDate(reply.timestamp),
     answered: Boolean(reply.answered),
     archivedAt: reply.archivedAt ? reviveDate(reply.archivedAt) : null,
@@ -1393,6 +1545,10 @@ function decisionMetaFor(decisionType) {
   return DECISION_TYPE_META[decisionType] || DECISION_TYPE_META.interaction;
 }
 
+function outcomeMetaFor(outcome) {
+  return REPLY_OUTCOME_META[outcome] || REPLY_OUTCOME_META[DEFAULT_REPLY_OUTCOME];
+}
+
 function productNameForComment(comment) {
   if (comment.productKey && PRODUCTS[comment.productKey]) return PRODUCTS[comment.productKey].name;
   if (comment.relevance?.productKey && PRODUCTS[comment.relevance.productKey]) return PRODUCTS[comment.relevance.productKey].name;
@@ -1453,8 +1609,11 @@ function getReplySourceClass(reply) {
 
 
   function mount() {
+    loadProductConfig();
+    resetProductDraftStatus();
     state.ai.maxRequestsPerSession = loadAiLimit();
     restoreWorkspaceState();
+    resetProductDraftStatus();
     startWorkspacePersistence();
     updateClock();
     state.clockTimer = window.setInterval(updateClock, 1000);

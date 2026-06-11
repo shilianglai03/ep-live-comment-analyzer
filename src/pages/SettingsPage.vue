@@ -17,7 +17,7 @@
         <div><span>已归档</span><strong>{{ archiveCount }} 条</strong></div>
       </div>
     </section>
-    <ProductPanel />
+    <ProductPanel editable />
   </section>
 </template>
 

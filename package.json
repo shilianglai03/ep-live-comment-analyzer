@@ -10,6 +10,7 @@
     "build": "vite build",
     "check:priority": "node scripts/check-priority.mjs",
     "check:import": "node scripts/check-import.mjs",
+    "check:adapter": "node scripts/check-adapter.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173"
   },
   "engines": {
