@@ -22,7 +22,16 @@
     </div>
     <div class="comment-feed" :class="{ compact }" aria-live="polite">
       <div v-if="visibleComments.length === 0" class="empty-state">启动后实时评论会出现在这里</div>
-      <article v-for="comment in visibleComments" :key="comment.id" class="comment-item" :class="{ muted: !comment.relevance?.related }">
+      <article
+        v-for="comment in visibleComments"
+        :key="comment.id"
+        class="comment-item"
+        :class="{
+          muted: !comment.relevance?.related,
+          urgent: comment.analysis.needsReply,
+          high: comment.analysis.priority >= 85,
+        }"
+      >
         <div class="comment-topline">
           <span>{{ comment.user }} · {{ comment.source }}</span>
           <span>{{ formatTime(comment.timestamp) }}</span>

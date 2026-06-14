@@ -13,7 +13,16 @@
     </div>
     <div class="reply-list" :class="{ compact }">
       <div v-if="visibleReplies.length === 0" class="empty-state">高价值评论会自动进入回复队列</div>
-      <article v-for="reply in visibleReplies" :key="reply.id" class="reply-item" :class="{ selected: isReplySelected(reply.id) }">
+      <article
+        v-for="reply in visibleReplies"
+        :key="reply.id"
+        class="reply-item"
+        :class="{
+          selected: isReplySelected(reply.id),
+          high: reply.priority >= 85,
+          ai: reply.source === 'ai',
+        }"
+      >
         <div class="reply-topline">
           <span>{{ reply.user }}</span>
           <span class="intent-row">
