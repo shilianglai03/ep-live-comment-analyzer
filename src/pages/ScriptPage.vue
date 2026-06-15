@@ -8,6 +8,20 @@
         </div>
         <span class="health-pill">{{ scriptPlan.focus }}</span>
       </div>
+      <div class="script-stage">
+        <div>
+          <span>当前焦点</span>
+          <strong>{{ scriptPlan.focus }}</strong>
+        </div>
+        <div>
+          <span>热词线索</span>
+          <strong>{{ scriptPlan.hotWords }}</strong>
+        </div>
+        <div>
+          <span>口播目标</span>
+          <strong>短句 + 事实 + 节奏</strong>
+        </div>
+      </div>
       <div class="script-summary">
         <span>当前热词</span>
         <strong>{{ scriptPlan.hotWords }}</strong>

@@ -7,6 +7,10 @@
       </div>
     </div>
     <div class="split-stack">
+      <div class="signal-meter" :class="responseLoad.level">
+        <span>回复压力</span>
+        <strong>{{ responseLoad.text }}</strong>
+      </div>
       <div>
         <h3>高频热词</h3>
         <div class="tag-cloud">

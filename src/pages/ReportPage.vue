@@ -14,6 +14,10 @@
         <div><span>已隔离</span><strong>{{ reviewReport.noiseComments }}（{{ reviewReport.noiseRatio }}%）</strong></div>
         <div><span>待回复 / 已归档</span><strong>{{ reviewReport.replyCount }} / {{ reviewReport.archiveCount }}</strong></div>
       </div>
+      <div class="report-insight-strip">
+        <span>复盘洞察</span>
+        <strong>{{ reviewReport.suggestions[0] }}</strong>
+      </div>
       <div class="report-section">
         <h3>意图分布</h3>
         <div class="report-table">
